@@ -1,5 +1,12 @@
-# Effective Java
-#### 1. 들어가기 ( 시작 ) 
+# Effective Java<br/>
+
+-----------
+참고
+https://git.io/fAm6s
+
+-----------
+
+#### 1. 들어가기 ( 시작 ) https://github.com/jongmin4943/effective-java/tree/master/1%EC%9E%A5
 #### 2. 객체 생성과 파괴 
 #### 3. 모든객체의 공통 메서드
 #### 4. 클래스와 인터페이스
