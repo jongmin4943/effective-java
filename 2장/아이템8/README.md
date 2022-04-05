@@ -32,3 +32,70 @@ finalizer 의 부작용은 여기서 끝이 아니다. finalizer 동작 중 발�
 잡지 못한 예외 때문에 해당 객체는 자칫 마무리가 덜 된 상태로 남을 수 있다. 거기에 다른 스레드가 이처럼 훼손된 객체를 사용하려 한다면 <br/>
 어떻게 동작할지 예측할 수 없다. 보통의 경우엔 잡지 못한 예외가 스레드를 중단시키고 Stack trace 를 출력하지만, 같은 일이 finalizer <br/>
 에서 일어난다면 경고조차 출력하지 않는다. 그나마 cleaner 는 자신의 스레드를 통제하기 때문에 이러한 문제가 발생하지 않는다.
+
+finalizer 와 cleaner 는 심각한 성능 문제도 동반한다.가비지 컬렉터의 효율을 떨어뜨리기 때문이다.<br/>
+finalizer 를 사용한 클래스는 finalizer 공격에 노출되어 심각한 보안문제를 일으킬 수 있다. 공격원리는 생성자나 직렬화 과정에서 <br/>
+예외가 발생하면, 이 생성되다 만 객체에서 악의적인 하위 클래스의 finalizer 가 수행될 수 있게 된다. 이 finalizer 는 정적 필드에 자신의 <br/>
+참조를 할당하여 가비지 컬렉터가 수집하지 못하게 막을 수 있다. 객체 생성을 막으려면 생성자에서 예외를 던지는 것만으로 충분하지만, <br/>
+finalizer 가 있다면 그렇지도 않다. final 클래스들은 하위 클래스를 만들수 없으니 공격에 안전한다. final 이 아닌 클래스를 finalizer <br/>
+공격으로부터 방어하려면 아무 일도 하지 않는 finalizer 메서드를 만들고 final 로 선언한자.<br/>
+
+파일이나 스레드 등 종료해야 할 자원을 담고 있는 객체의 클래스에 <strong>AutoCloseable</strong> 를 구현해주고 클라이언트에서 인스턴스를 <br/>
+다 쓰고 다면 close 메서드를 호출하면 된다. 일반적으로는 try-with-resource 를 사용한다.
+
+자바 라이브러리의 일부 클래스는 안전망 역할의 finalizer 를 제공한다. FileInputSteam, FileOutStream, ThreadPoolExecutor <br/>
+가 대표적이다. cleaner 나 finalizer 가 즉시 호출되리라는 보장은 없지만, 자원 회수를 늦게라도 해주는것이 아예 안하는것보단 <br/>
+낫기 때문이다. 이런 안전망 역할의 finalizer 를 작성할 때는 그럴만한 값어치가 있는지 생각하자.
+
+적절히 활용하는 두번째 예는 네이티브 피어(native peer)와 연결된 객체에서다. <small>(네이티브 피어가 무엇인지 잘 이해가 안간다)</small><br/>
+네이티브 피어란 일반 자바 객체가 네이티브 메서드를 통해 기능을 위임한 네이티브 객체를 말한다. 네이티브 피어는 객체가 아니니 가비지 컬렉터는 <br/>
+그 존재를 알지 못한다. 그 결과 피어를 회수할 때 네이티브 객체까지 회수하지 못한다. cleaner 나 finalizer 가 나서서 처리하기 적당한 작업이다.<br/>
+단, 성능 저하를 감당할 수 있고 네이티브 피어가 심각한 자원을 가지고 있지 않을 때에만 해당된다. 성능 저하를 감당할 수 없거나 네이티브 피어가<br/>
+사용하는 자원을 즉시 회수해야 한다면 앞서 설명한 close 메서드를 사용해야한다.
+
+cleaner 예제
+
+```java
+import java.lang.ref.Cleaner;
+
+public class Room implements AutoCloseable {
+    private static final Cleaner CLEANER = Cleaner.create();
+
+    // 청소가 필요한 자원. 절대 Room 을 참조 해서는 안된다.
+    private static class State implements Runnable {
+        int numJunkPiles;
+
+        State(int numJunkPiles) {
+            this.numJunkPiles = numJunkPiles;
+        }
+
+        @Override
+        public void run() {
+            System.out.println("방 청소");
+            numJunkPiles = 0;
+        }
+    }
+
+    // 방의 상태. cleaner 과 공유한다.
+    private final State state;
+
+    // cleanable 객체. 수거 대상이 되면 방을 청소한다.
+    private final Cleaner.Cleanable cleanable;
+
+    public Room(int numJunkPiles) {
+        state = new State(numJunkPiles);
+        cleanable = CLEANER.register(this, state);
+    }
+
+    @Override
+    public void close() {
+        cleanable.clean();
+    }
+}
+```
+System.exit 을 호출할때의 cleaner 동작은 구현하기 나름이지만 청소가 이뤄질지는 보장하지 않는다.
+System.gc() 를 추가하는 것으로 종료전에 "방 청소" 를 출력 할수 있을지도 보장되지 않는다.
+
+> 핵심정리
+> cleaner(자바 8까지는 finalizer) 는 안정망 역할이나 중요하지 않은 네이티브 자원 회수용으로만 사용하자. <br/>
+> 물론 이런 경우라도 불확실성과 성능 저하에 주의 해야한다.
