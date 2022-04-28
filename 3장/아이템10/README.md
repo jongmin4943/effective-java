@@ -54,8 +54,8 @@ Object 명세에서 말하는 동치관계란 무엇일까?</br>
 
 <strong>반사성</strong></br>은 객체는 자기 자신과 같아야한다는 뜻이다.</br>
 일부러 어기는 경우가 아니라면 만족시키지 못하기가 더 어렵다. 이 요건을 어긴 클래스의 인스턴스를 </br>
-컬렉션에 넣은다음 contains 메서드를 호출하면 방금 넣은 인스턴스가 없다고 답할 것이다.</br>
-<strong>대칭성</strong>은 두 객체는 서로에 대한 동치 여부에 똑같이 답해야 한다는 뜻이다.</br>
+컬렉션에 넣은다음 contains 메서드를 호출하면 방금 넣은 인스턴스가 없다고 답할 것이다.</br></br>
+<strong>대칭성</strong></br>은 두 객체는 서로에 대한 동치 여부에 똑같이 답해야 한다는 뜻이다.</br>
 반사성 요건과 달리 대칭성 요건은 자칫하면 어길 수 있다. 대소문자를 구별하지 않는 문자열을 구현한 다음 클래스를 예로 살펴보자.</br>
 이 클래스에서 toString 메서드는 원본 문자열의 대소문자를 그대로 돌려주지만 equals 에서는 대소문자를 무시한다.</br>
 ```java
@@ -222,5 +222,112 @@ nanoseconds 필드를 추가했다. 그 결과로 Timestamp 의 equals 는 대�
 > 상위 클래스를 직접 인스턴스로 만드는게 불가능하다면 지금까지 이야기한 문제들은 일어나지 않는다.
 
 <strong>일관성</strong></br>
+은 두 객체가 같다면 (어느 하나 혹은 두 객체 모두가 수정되지 않는 한) 앞으로도 영원히 같아야 한다는 뜻이다.</br>
+가변 객체는 비교 시점에 따라 서로 다를수도 혹은 같을 수도 있는 반면, 불변 객체는 한번 다르면 끝까지 달라야 </br>
+한다. 클래스를 작성할 때는 불변 클래스로 만드는게 나을지를 심사숙고하자. 불변 클래스로 만들기로 했다면 </br>
+equals 가 한번 같다고 한 객체는 영원히 같도록 해야한다.</br>
+클래스가 불변이든 가변이든 equals 의 판단에 신뢰할 수 없는 자원이 끼어들게 해서는 안된다. 이 제약을 어기면</br>
+익관성 조건을 만족시키기가 아주 어렵다. 예컨대 URL 의 equals 는 주어진 URL 과 매핑된 호스트이 IP 주소를 </br>
+이용해 비교한다. 호스트 이름을 IP주소로 바꾸려면 네트워크를 통해야하는데, 그 결과가 항상 같다고 보장할 수 없다.</br>
+이는 URL의 equals 가 일반 규약을 어기게하고, 실무에서도 종종 문제를 일으킨다. 하휘 호환성이 발목을 잡아 </br>
+잘못된 동작을 바로잡을 수도 없다. 이런 문제를 피하려면 equals 는 항시 메모리에 존재하는 객체만을 사용한</br>
+결정적(deterministic) 계산만 수행해야한다.</br>
 
 <strong>null-아님</strong></br>
+은 이름처럼 모든 객체가 null 과 같지 않아야 한다는 뜻이다.</br> 의도하지 않았음에도 o.equals(null)이 true를</br>
+반환하는 상황은 상상하기 어렵지만, 실수로 NPE을 던지는 코드는 흔할 것이다. 이 일반규약은 이런 경우도 허용하지않는다.</br>
+수많은 클래스가 다음코드처럼 입력이 null인지를 확인해 자신을 보호한다.
+```java
+// 명시적 null 검사 -> 필요없다.
+@Override public boolean equals(Ojbect o) {
+  if(o == null) return false
+}
+```
+이러한 검사는 필요치 않다. 동치성을 검사하려면 equals 는 건네받은 객체를 적절히 형변환한 후 필수 필드들의 값을</br>
+알아내야한다. 그러려면 형변환에 앞서 instanceof 연산자로 입력 매개변수가 올바른 타입인지 검사해야한다.
+```java
+@Override public boolean equals(Ojbect o) {
+  if(!(o instanceof MyType)) return false;
+  MyType mt = (MyType) o;
+}
+```
+equals 가 타입을 확인하지 않으면 잘못된 타입이 인수로 주어졌을 때 ClassCastException 을 던져서 일반 규약을</br>
+위배하게 된다. 그런데 instanceof는 첫번째 피연자가 null이면 false를 반환한다. 따라서 입력이 null이면 타입확인</br>
+단계에서 false를 반환하기 때문에 null검사를 명시적으로 안해도 된다.
+
+- equals 메서드 구현방법 정리</br>
+  1. == 연산자를 사용해 입력이 자기 자신의 참조인지 확인한다. 성능 최적화용으로 자기자신이면 true를 반환한다.
+  2. instanceof 연산자로 입력이 올바른 타입인지 확인한다. 그렇지 않다면 false를 반환한다. 이때의 올바른 타입은 equals가
+  정의된 클래스인 것이 보통이지만, 가끔은 그 클래스가 구현한 특정 인터페이스가 될 수도 있다. 어떤 인터페이스는 자신을 구현한
+  클래스끼리도 비교할 수 있도록 규약을 수정하기도 한다. 이런 인터페이스를 구현한 클래스라면 equals 에서
+  해당 인터페이스를 사용해야 한다. Set, List, Map 등의 컬렉션 인터페이스들이 여기에 해당한다.
+  3. 입력을 오바른 타입으로 형변환한다.
+  4. 입력 객체와 자기 자신의 대응되는 '핵심'필드들이 모드 일치하는지 하나씩 검사한다. 모든 필드가 일치하면 true,
+  하나라도 다르다면 false를 반환한다. 2단계에서 인터페이스를 사용했다면 입력의 필드값을 가져올때도 그 인터페이스의
+  메서드를 사용해야한다. 타입이 클래스라면 해당 필드에 직접 접근할 수도 있다.
+
+float 과 double 을 제외한 기본 타입 필드는 == 연산자로 비교하고, 참조 타입 필드는 각각의 equals 메서드로,</br>
+float 과 double 필드는 각각 정적 메서드인 Float.compare(float, float) 와 Double.compare(double, double)</br>
+로 비교한다. 이 둘이 특별한 이유는 Float.NaN, -0.0f, 특수한 부동소수값 등을 다뤄야 하기 때문이다.</br>
+Float.equals 와 Double.equals 메서드를 대신 사용할 수도 있지만, 이 메서드들은 오토박승을 수반할 수 있으니</br>
+성능상 좋지 않다. 배열 필드는 원소 각각을 앞서의 지침대로 비교한다. 배열의 모든 원소가 핵심필드라면 </br>
+Arrays.equals 메서드들 중 하나를 사용하자.때론 null 도 정상 값으로 취급하는 참조 타입 필드도 있다. </br>
+이런 필드는 Objects.equals(Object, Object)로 비교해 NPE 발생을 예방하자.
+
+앞서의 CaseInsensitiveString 예처럼 비교하기가 아주 복잡한 필드를 가진 클래스도 있다. 이럴때는 그 필드의</br>
+표준형(canonical form)을 저장해둔 후 표준형끼리 비교하면 훨씬 경제적이다. 이 기법은 특히 불변 클래스에 제격이다.</br>
+가변 객체라면 값이 바뀔 때마다 표준형을 최신 상태로 갱신해줘야한다.</br>
+어떤 필드를 먼저 비교하느냐가 equals 의 성능을 좌우하기도 한다. 최상의 성능을 바란다면 다를 가능성이 더 크거나</br>
+비교하는 비용이 싼 필드를 먼저 비교하다. 동기화용 lock 필드 같이 객체의 논리적 상태와 관련 없는 필드는 비교하면</br>
+안된다. 핵심 필드로부터 계산해낼 수 있는 파생 필드 역시 굳이 비교할 필요는 없지만, 파생 필드를 비교하는 쪽이 더 </br>
+빠를때도 있다. 파생 필드가 객체 전체의 상태를 대표하는 상황에서 그렇다. 예컨대 자신의 영역을 캐시해두는 Polygon 클래스</br>
+가 있다고 해보자. 그렇다면 모든 변과 정점을 일일이 비교할 필요 없이 캐시해둔 영역만 비교하면 결과를 곧바로 알 수있다.</br>
+
+equals 를 다 구현했다면 세가지만 자문해보자. 대칭적인가? 추이성이 있는가? 일관적인가? 자문에서 끝내지 말고 </br>
+단위 테스트를 작성해 돌려보자. 단, equals 메서드를 AutoValue 를 이용해 작성했다면 테스트를 생략해도 안심할 수 있다.</br>
+세 요건중 하나라도 실패한다면 원인을 찾아서 고치자. 물론 나머지 요건인 반사성과 null-아님 도 만족해야한다.
+
+```java
+//전형적인 equals 메서드의 예
+public final class PhoneNumber {
+    private final short areaCode, prefix, lineNum;
+    public PhoneNumber(int areaCode, int prefix, int lineNum) {
+        this.areaCode = rangeCheck(areaCode, 999, "지역코드");
+        this.prefix = rangeCheck(prefix, 999, "프리픽스");
+        this.lineNum = rangeCheck(lineNum, 999, "가입자 번호");
+    }
+    
+    private static short rangeCheck(int val, int max, String arg) {
+        if(val < 0 || val > max)
+            throw new IllegalArgumentException(arg + ": " + val);
+        return (short) val;
+    }
+    
+    @Override
+  public boolean equals(Object o) {
+        if(o == this) return true;
+        if(!(o instanceof PhoneNumber)) return false;
+        PhoneNumber pn = (PhoneNumber) o;
+        return pn.lineNum == lineNum && pn.prefix == prefix && pn.areaCode == areaCode;
+    }
+}
+```
+
+- 주의사항
+  1. equals 를 재정의 할땐 hashCode 도 반드시 재정의하자(아이템 11)
+  2. 너무 복잡하게 해결하려 들지 말자. 필드들의 동치성만 검사해도 equals 규약을 어렵지 않게 지킬 수 있다.
+  오히려 너무 공격적으로 파고들다가 문제를 일으키기도 한다. 일반적으로 별칭(alias)은 비교하지 않는게 좋다.
+  예컨대 File 클래스라면, 심볼릭 링크를 비교해 같은 파일을 가리키는지를 확인하려 들면 안된다.
+  3. Object 외의 타입을 매겨변수로 받는 equals 메서드는 선언하지 말자.
+
+equals(hashCode 도 마찬가지로) 를 작성하고 테스트하는 일은 지루하고 항상 뻔하다. 다행히 이 작업을 대신해줄</br>
+오픈 소스가 있으니, 바로 구글의 AutoValue 프레임워크다. 클래스에 애너테이션 하나만 추가하면 AutoValue 가 </br>
+이 메서드들을 알아서 작성해주며, 여러분이 직접 작성하는 것과 근본적으로 같은 코드를 만들어 줄것이다.</br>
+대부분의 IDE 도 같은 기능을 제공하지만 생성된 코드가 AutoValue 만큼 깔끔하거나 읽기 좋지는 않다. 또한 </br>
+IDE 는 나중에 클래스가 수정된걸 자동으로 알아채지는 못하니 테스트 코드를 작성해둬여한다. 이런 단점을 감안하더라도</br>
+사람이 직접 작성하는 것보다는 IDE에 맡기는 편이 낫다. 적어도 사람처럼 실수를 저지르지는 않으니 말이다.
+
+> 핵심정리 </br>
+> 꼭 필요한 경우가 아니면 equals 를 재정의하지 말자. </br>
+> 많은 경우에 Object의 equals가 여러분이 원하는 비교를 정확히 수행해준다.</br>
+> 재정의해야 할 때는 그 클래스의 핵심 필드 모두를 빠짐없이, 다섯 가지 규약을 확실히 지켜가며 비교해야한다.
