@@ -43,3 +43,82 @@ HashSet 을 상속하며 add 를 재정의한 것이 addAll 에 까지 영향을
 @implSpec 태그는 자바 8에서 처음 도입되어 자바 9부터 본격적으로 사용되기 시작했다. 이 태그가 기본값으로<br/>
 활성화 되어야 바람직하다고 생각하지만 자바 11의 자바독에서도 선택사항으로 남겨져 있다. 이 태그를 활성화하려면<br/>
 명령줄 매개변수로 -tag "implSpec:a:Implementation Requirements:" 를 지정해주면 된다.
+
+이처럼 내부 매커니즘을 문서로 남기는것만이 상속을 위한 설계의 전부는 아니다. 효율적인 하위 클래스를 큰 어려움없이<br/>
+만들 수 있게 하려면 클래스의 내부 동작과정 중간에 끼어들 수 있는 훅을 잘 선별하여 protected 메서드 형태로<br/>
+공개해야 할 수도 있다. 드물게는 protected 필드로 공개해야 할 수도 있다. AbstractList 의 removeRange<br/>
+메서드를 예로 살펴보자.
+```java
+/**
+ * fromIndex 부터 toIndex 까지의 모든 원소를 이 리스트에서 제거한다. toIndex 이후의 원소들은 앞으로
+ * 당겨진다. 이 호출로 리스트는 toIndex - fromIndex 만큼 짧아진다.
+ * 이 리스트 혹은 이 리스트의 부분리스트에 정의된 clear 연산이 이 메서드를 호출한다. 리스트 구현의 내부
+ * 구조를 활용하도록 이 메서드를 재정의하면 이 리스트와 부분리스트의 clear 연산 성능을 크게 개선할 수 있다.
+ * Implementation Requirements : 이 메서드는 fromIndex 에서 시작하는 리스트 반복자를 얻어 모든 원소를
+ * 제거할 때 까지 ListIterator.next 와 ListIterator.remove 를 반복 호출하도록 구현되었다.
+ * 주의 : ListIterator.remove 가 선형 시간이 걸리면 이 구현의 성능은 제곱에 비례한다.
+ */
+protected void removeRange(int fromIndex, int toIndex)
+```
+List 구현체의 최종 사용자는 removeRange 메서드에 관심이 없다. 그럼에도 이 메서드를 제공한 이유는 단지 하위<br/>
+클래스에서 부분리스트의 clear 메서드를 고성능으로 만들기 쉽게 하기 위해서이다. removeRange 메서드가 없다면<br/>
+하위 클래스에서 clear 메서드를 호출하면 (제거할 원소 수의) 제곱에 비례해 성능이 느려지거나 부분리스트의<br/>
+메커니즘을 밑바닥부터 새로 구현해야 했을 것이다.
+
+그렇다면 상속용 클래스를 설계할 때 어떤 메서드를 protected 로 노출해야 할지는 어떻게 결정할까? 심사숙고해서<br/>
+잘 예측본 다음, 실제 하위 클래스를 만들어 시험해보는 것이 최선이다. protected 메서드 하나하나가 내부 구현에<br/>
+해당하므로 그 수는 가능한 적어야 한다. 한편으로는 너무 적게 노출해서 상속으로 얻는 이점마저 없애지 않도록<br/>
+주의해야 한다. <strong>상속용 클래스를 시험하는 방법은 직접 하위클래스를 만들어보는것이 유일하다.</strong><br/>
+꼭 필요한 protected 멤버를 놓쳤다면 하위 클래스를 작성할 때 그 빈자리가 확연히 드러난다. 거꾸로, 하위<br/>
+클래스를 여러 개 만들때까지 전혀 쓰이지 않는 protected 멤버는 사실 private 이었어야 할 가능성이 크다.<br/>
+경험상 이러한 검증에는 하위 클래스 3개 정도가 적당하다. 그리고 이 중 하나는 제 3자가 작성해봐야 한다.<br/>
+
+널리 쓰일 클래스를 상속용으로 설계한다면 여러분이 문서화한 내부 사용 패턴과, protected 메서드와 필드를<br/>
+구현하면서 선택한 결정에 영원히 책임져야 함을 잘 인식해야한다. 이 결정들이 그 클래스의 성능과 기능에 영원한<br/>
+족쇄가 될 수 있다. 그러니 상속용으로 설계한 클래스는 배포 전에 반드시 하위 클래스를 만들어 검증해야한다.<br/>
+
+또한, 상속하려는 사람을 위해 덧붙인 설명은 단순히 그 클래스의 인스턴스만 만들어 사용할 프로그래머에게는<br/>
+필요없는 군더더기일 뿐이다. 일반적인 API 설명과 상속용 설명을 구분해주는 도구가 마땅치 않다.
+
+상속을 허용하는 클래스가 지켜야할 제약이 아직 몇개 남았다. 상속용 클래스의 생성자는 직접적으로든<br/>
+간접적으로든 재정의 가능 메서드를 호출해서는 안된다. 이 규칙을 어기면 프로그램이 오작동할 것이다. 상위<br/>
+클래스의 생성자가 하위 클래스의 생성자보다 먼저 실행되므로 하위 클래스에서 재정의한 메서드가 하위 클래스의<br/>
+ 생성자보다 먼저 호출된다. 이때 그 재정의한 메서드가 하위 클래스의 생성자에서 초기화하는 값에 의존한다면<br/>
+의도대로 동작하지 않을 것이다.
+
+```java
+public class Super {
+    // 잘못된 예 - 생성자가 재정의 가능 메서드를 호출한다.
+    public Super() {
+        overrideMe();
+    }
+
+    public void overrideMe() {
+
+    }
+}
+
+public final class Sub extends Super {
+    private final Instant instant;
+
+    Sub() {
+        instant = Instant.now();
+    }
+    
+    @Override
+    public void overrideMe() {
+        System.out.println(instant);
+    }
+    
+    public static void main(String[] args) {
+        Sub sub = new Sub();
+        sub.overrideMe();
+    }
+}
+```
+이 프로그램이 instant 를 두 번 출력하리라 기대했겠지만, 첫번째는 null 을 출력한다. 상위 클래스의<br/>
+생성자는 하위 클래스의 생성자가 인스턴스 필드를 초기화하기도 전에 overrideMe 를 호출하기 때문이다.<br/>
+final 필드의 상태가 이 프로그램에서는 두 가지 임을 주목하자. 정상이라면 단 하나뿐이어야 한다.<br/>
+overrideMe 에서 instant 객체의 메서드를 호출하려 한다면 상위 클래스의 생성자가 overrideMe를<br/>
+호출할 때 NullPointerException 을 던지게 된다.
+- private, final, static 메서드는 재정의가 불가능하니 생성자에서 안심하고 호출해도 된다.
