@@ -38,3 +38,85 @@ private final Collection<Stamp> stamps = ...;
 형변환을 추가하여 절대 실패하지 않음을 보장한다. Stamp 용 컬렉션에 Coin 을 넣는다는 예가 억지스러워<br/>
 보이겠지만, 현업에서도 종종 일어나는 일이다. 예컨대 BigDecimal 용 컬렉션에 BigInteger 를 넣는<br/>
 실수는 그리 억지 같지 않을 것이다.
+
+raw 타입을 쓰는 걸 언어 차원에서 막아 놓지는 않았지만 절대로 써서는 안된다. raw 타입을 쓰면 제네릭<br/>
+이 안겨주는 안전성과 표현력을 모두 잃게 된다. 그렇다면 절대 써서는 안되는 raw 타입을 애초에 왜 <br/>
+만들어놓은 걸까? 바로 호환성 때문이다. 자바가 제네릭을 받아들이기까지 거의 10년이 걸린 탓에 제네릭 없이<br/>
+짠 코드가 이미 세상을 뒤덮어 버렸다. 그래서 기존 코드를 모두 수용하면서 제네릭을 사용하는 새로운코드와도<br/>
+맞물려 돌아가게 해야만 했다. raw 타입을 사용하는 메서드에 매개변수화 타입의 인스턴스를 넘겨도 (반대도)<br/>
+동작해야만 했던것이다. 이 마이그레이션 호환성을 위해 raw 타입을 지원하고 제네릭 구현에는 소거(erasure)<br/>
+방식을 사용하기로 했다.
+
+List 같은 raw 타입은 사용해서는 안되나, List<Object> 처럼 임의 객체를 허용하는 매개변수화 타입은<br/>
+괜찮다. raw 타입인 List 와 매개변수화 타입인 List<Object> 의 차이는 무엇일까? 간단히 이야기하자면<br/>
+List 는 제네릭타입에서 완전히 발을 뺀 것이고, List<Object> 는 모든 타입을 허용한다는 의사를 컴파일러에<br/>
+명확히 전달한 것이다. 매개변수로 List 를 받는 메서드에 List<String> 을 넘길 수 있지만, List<Object><br/>
+를 받는 메서드에는 넘길 수 없다. 이는 제네릭의 하위 타입 규칙 때문이다. 즉, List<String> 은 raw 타입인<br/>
+List 의 하위타입이지만, List<Object> 의 하위 타입은 아니다. 그 결과, List<Object> 같은 매개변수화<br/>
+타입을 사용할 때와 달리 List 같은 raw 타입을 사용하면 타입 안정성을 잃게 된다.
+```java
+public static void main(String[] args) {
+    List<String> strings = new ArrayList<>();
+    unsafeAdd(strings, Integer.valueOf(42));
+    String s = strings.get(0); // 컴파일러가 자동으로 형변환 코드를 넣어준다.
+}
+
+private static void unsafeAdd(List list, Object o) {
+    list.add(o);
+}
+
+```
+이 프로그램을 이대로 실행하면 strings.get(0) 의 결과를 형변환하려 할 떄 ClassCastException 을 던진다.<br/>
+형변환은 컴파일러가 자동으로 만들어준 것이라 보통은 실패하지 않는다. 하지만 이 경우엔 unchecked 경고를<br/>
+무시하여 그 대가를 치른것이다. raw List 를 List<Object> 로 바꾸면 컴파일이 안된다.
+
+이쯤 되면 원소의 타입을 몰라도 되는 raw 타입을 쓰고 싶어질 수 있다. 예컨대 2개의 Set 을 받아 공통<br/>
+원소를 반환하는 메서드를 작성한다고 해보자.
+```java
+// 잘못된 예 - 모르는 타입의 원소도 받는 raw 타입을 사용했다.
+static int numElementsInCommon(Set s1, Set s2) {
+    int result = 0;
+    for (Object o1: s1) {
+        if(s2.contains(o1)) result ++;
+    }
+    return result;
+}
+```
+
+이 메서드는 동작은 하지만 raw 타입을 사용해 안전하지 않다. 따라서 비한정적 와일드카드 타입을 대신 사용하는게<br/>
+좋다. 제네릭 타입을 쓰고 싶지만 실제 타입 매개변수가 무엇인지 신경 쓰고 싶지 않다면 물음표를 사용하자.<br/>
+예컨대 제네릭 타입인 Set<E> 의 비한정적 와일드카드 타입은 Set<?> 다.
+
+비한정적 와일드카드 타입인 Set<?> 와 raw 타입인 Set 의 차이는 무엇일까? 특징을 간단히 말하자면 와일드카드<br/>
+타입은 안전하고, raw 타입은 안전하지 않다. raw 타입 컬렉션에는 아무 원소나 넣을 수 있으니 타입 불변식을<br/>
+훼손한다. 반면, Collection<?> 에는(null 외에는) 어떤 원소도 넣을 수 없다. 다른 원소를 넣으려 하면<br/>
+컴파일할 때 다음의 오류 메시지를 보게 될것이다.
+```java
+WildCard.java:error: incompatible types: String cannot be conveted to CAP#1
+```
+컬렉션의 타입 불변식을 훼손하지 못하게 막았다. 구체적으로는, (null 외의) 어떤 원소로 Collection<?>에<br/>
+넣지 못하게 했으며 컬렉션에서 꺼낼 수 있는 객체의 타입도 전혀 알 수 없게 했다. 이러한 제약을 받아들일 수<br/>
+없다면 제네릭 메서드나 한정적 와일드카드 타입을 사용하면 된다.
+
+raw 타입을 쓰지말라는 규칙에도 소소한 예외가 몇 개 있다. class 리터럴에는 raw 타입을 써야한다.<br/>
+자바 명세는 class 리터럴에 매개변수화 타입을 사용하지 못하게 했다.(배열과 기본타입은 허용한다.)<br/>
+예를 들어 List.class, String[].class, int.class 는 허용하고 List<String>.class 와<br/>
+List<?>.class 는 허용하지 않는다.
+
+두번째 예외는 instanceOf 연산자와 관련이 있다. 런타입에는 제네릭 타입정보가 지워지므로 instanceof<br/>
+연산자는 비한정적 와일드카드 타입 이외의 매개변수화 타입에는 적용할 수 없다. 그리고 raw 타입이든<br/>
+비한정적 와일드카드타입이든 instanceof 는 완전히 똑같이 동작한다. 비한정적 와일드카드 타입의<br/>
+꺽쇠괄호와 물음표는 아무런 역할 없이 코드만 지저분하게 만드므로, 차라리 raw 타입을 쓰는 편이 깔끔하다.<br/>
+```java
+// 제네릭 타입에 instanceof 를 사용하는 올바른 예
+if (o instanceof Set) {     // raw 타입
+    Set<?> s = (Set<?>) o;  // 와일드카드 타입
+}
+// o 타입이 Set 임을 확인 한 다음 와일드 카드 타입인 Set<?> 로 형변환해야한다. 이는 검사 형변환
+// checked cast 이므로 컴파일러 경고가 뜨지 않는다.
+```
+> 핵심정리<br/>
+> raw 타입을 사용하면 런타임에 예외가 일어날 수 있으니 사용하면 안된다. raw 타입은 제네릭이 도입되기 이전
+> 코드와의 호환성을 위해 제공될 뿐이다. Set<Object> 는 어떤 타입의 객체도 저장할 수 있는 매개변수화
+> 타입이고, Set<?> 는 모종의 타입 객체만 저장할 수 있는 와일드카드 타입이다. 그리고 이들의 raw 타입인
+> Set 은 제네릭 타입 시스템에 속하지 않는다. raw 타입은 안전하지 않다.
